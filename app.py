@@ -4,6 +4,8 @@ import requests
 import time
 from io import BytesIO
 
+st.set_page_config(page_title="Membership Checker", layout="wide")
+
 st.title("Membership Verification Tool")
 
 # ==========================================
@@ -26,37 +28,53 @@ query memberCheckForCodeV2($code: String) {
     lastName
     code
     explanation
-    sector
     status
     tierName
-    product
   }
 }
 """
 
 # ==========================================
-# UPLOAD FILE
+# FILE UPLOAD
 # ==========================================
 
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
 
 if uploaded_file:
 
-    df = pd.read_excel(uploaded_file)
+    df = pd.read_excel(uploaded_file, engine="openpyxl")
 
-    st.write("Preview:")
-    st.dataframe(df.head())
+    st.write("Preview of uploaded file:")
+    st.dataframe(df)
+
+    # ==========================================
+    # AUTO-DETECT MEMBER ID COLUMN (IMPORTANT FIX)
+    # ==========================================
+
+    df.columns = df.columns.str.strip().str.lower()
+
+    if "member_id" in df.columns:
+        id_col = "member_id"
+    elif "member id" in df.columns:
+        id_col = "member id"
+    elif "id" in df.columns:
+        id_col = "id"
+    else:
+        st.error("No valid member ID column found. Please include 'member_id' column.")
+        st.stop()
+
+    # ==========================================
+    # RUN BUTTON
+    # ==========================================
 
     if st.button("Run Verification"):
 
         results = []
-
         progress = st.progress(0)
 
         for i, row in df.iterrows():
 
-            member_id = str(row["member_id"]).strip()
-            st.write(f"Checking {member_id}...")
+            member_id = str(row[id_col]).strip()
 
             payload = {
                 "operationName": "memberCheckForCodeV2",
@@ -69,24 +87,35 @@ if uploaded_file:
                 data = response.json()["data"]["memberCheckForCodeV2"]
 
                 if data:
+                    status = data.get("status", "")
+                    tier = data.get("tierName", "")
+
+                    # Your original logic equivalent
+                    if status == "matchFound" and tier == "Premium":
+                        eligibility = "ELIGIBLE"
+                    else:
+                        eligibility = "NOT ELIGIBLE"
+
                     results.append({
                         "member_id": member_id,
-                        "status": data.get("status"),
-                        "tierName": data.get("tierName"),
                         "firstName": data.get("firstName"),
                         "lastName": data.get("lastName"),
+                        "status": status,
+                        "tierName": tier,
+                        "eligibility": eligibility,
                         "explanation": data.get("explanation")
                     })
+
                 else:
                     results.append({
                         "member_id": member_id,
-                        "status": "NO RESPONSE"
+                        "eligibility": "NO RESPONSE"
                     })
 
             except Exception as e:
                 results.append({
                     "member_id": member_id,
-                    "status": f"ERROR: {str(e)}"
+                    "eligibility": f"ERROR: {str(e)}"
                 })
 
             time.sleep(1)
@@ -94,12 +123,12 @@ if uploaded_file:
 
         result_df = pd.DataFrame(results)
 
-        st.success("Done!")
+        st.success("Done processing!")
 
         st.dataframe(result_df)
 
         # ==========================================
-        # DOWNLOAD BUTTON
+        # DOWNLOAD EXCEL
         # ==========================================
 
         output = BytesIO()
@@ -109,5 +138,6 @@ if uploaded_file:
         st.download_button(
             "Download Results",
             data=output.getvalue(),
-            file_name="members_checked.xlsx"
+            file_name="members_checked.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
