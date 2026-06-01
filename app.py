@@ -1,39 +1,35 @@
-for i, row in df.iterrows():
+import streamlit as st
+import pandas as pd
+import requests
+import time
+from io import BytesIO
 
-    member_id = str(row.iloc[4]).strip()  # COLUMN E (same as your Colab)
+st.title("Membership Tool")
 
-    payload = {
-        "operationName": "memberCheckForCodeV2",
-        "query": QUERY,
-        "variables": {"code": member_id}
-    }
+uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"])
 
-    try:
-        response = requests.post(URL, json=payload, headers=HEADERS, timeout=20)
-        data = response.json()["data"]["memberCheckForCodeV2"]
+if uploaded_file:
 
-        if data:
-            status = data.get("status", "")
-            tier = data.get("tierName", "")
+    # 1. LOAD DATA FIRST
+    df = pd.read_excel(uploaded_file, engine="openpyxl")
 
-            eligibility = "ELIGIBLE" if (status == "matchFound" and tier == "Premium") else "NOT ELIGIBLE"
+    st.write("Preview")
+    st.dataframe(df)
 
+    # 2. ONLY RUN WHEN BUTTON IS CLICKED
+    if st.button("Run Verification"):
+
+        results = []
+
+        # 3. NOW SAFE TO LOOP
+        for i, row in df.iterrows():
+
+            member_id = str(row.iloc[4]).strip()  # column E
+
+            # API call here...
             results.append({
-                "member_id": member_id,
-                "status": status,
-                "tierName": tier,
-                "eligibility": eligibility
-            })
-        else:
-            results.append({
-                "member_id": member_id,
-                "eligibility": "NO RESPONSE"
+                "member_id": member_id
             })
 
-    except Exception as e:
-        results.append({
-            "member_id": member_id,
-            "eligibility": f"ERROR: {str(e)}"
-        })
-
-    time.sleep(1)
+        st.success("Done")
+        st.dataframe(pd.DataFrame(results))
